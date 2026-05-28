@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environment — never copy this into the container
+venv/
+.venv/
+env/
+
+# Environment files — secrets never go into images
+.env
+.env.*
+!.env.example
+
+# Development tools
+.git/
+.gitignore
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker files themselves
+Dockerfile
+docker-compose*.yml
