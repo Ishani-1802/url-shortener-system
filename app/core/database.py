@@ -13,6 +13,10 @@ engine = create_async_engine(
     pool_pre_ping=True,
     pool_size=10,              # Max persistent connections in pool
     max_overflow=20,           # Extra connections allowed under load
+    connect_args = {}
+
+if "neon.tech" in settings.DATABASE_URL or "ssl=require" in settings.DATABASE_URL:
+    connect_args["ssl"] = "require"
 )
 
 # Session factory — each request gets its own session
