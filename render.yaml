@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: url-shortener
+    runtime: python
+    region: oregon
+    plan: free
+
+    buildCommand: pip install -r requirements.txt
+
+    preDeployCommand: alembic upgrade head
+
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+
+    healthCheckPath: /health
+
+    autoDeploy: true
+
+    envVars:
+      - key: APP_NAME
+        value: "URL Shortener"
+
+      - key: APP_VERSION
+        value: "1.0.0"
+
+      - key: DEBUG
+        value: "False"
+
+      - key: RATE_LIMIT_REQUESTS
+        value: "60"
+
+      - key: RATE_LIMIT_WINDOW
+        value: "60"
+
+      - key: PYTHON_VERSION
+        value: "3.12.0"
