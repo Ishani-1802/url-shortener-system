@@ -23,6 +23,8 @@ async def get_redis() -> aioredis.Redis:
                 max_connections=10,
                 ssl=True,
                 ssl_cert_reqs=None,
+                health_check_interval=30,
+                socket_keepalive=True,
             )
 
         # Local Redis
