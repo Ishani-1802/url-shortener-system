@@ -1,12 +1,39 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.api import urls as urls_router
 from app.core.config import get_settings
-from app.core.database import engine, Base
+from app.core.database import Base, engine
+from app.core.redis_client import close_redis, get_redis
+from app.middleware.rate_limiter import RateLimiterMiddleware
 
 settings = get_settings()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    print("✓ Database tables verified.")
+
+    redis = await get_redis()
+    await redis.ping()
+
+    print("✓ Redis connection verified.")
+
+    yield
+
+    # Shutdown
+    await close_redis()
+    await engine.dispose()
+
+    print("✓ Connections closed.")
+
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -14,9 +41,16 @@ app = FastAPI(
     description="Production-ready URL Shortener — like bit.ly, built with FastAPI",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
-# CORS configuration
+# Middleware order matters
+# Last added runs first
+
+app.add_middleware(
+    RateLimiterMiddleware
+)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -25,57 +59,49 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Register API routers
-# Important:
-# Specific routes like /shorten and /analytics/{short_code}
-# must exist before wildcard routes like /{short_code}
-app.include_router(urls_router.router)
-
-
-@app.on_event("startup")
-async def startup_event():
-    """
-    Verify database tables exist on startup.
-    """
-
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    print("Database tables verified/created.")
-
 
 @app.get("/health", tags=["Health"])
 async def health_check():
-    """
-    Health check endpoint.
-    """
-
     db_status = "ok"
+    cache_status = "ok"
 
+    # Database check
     try:
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
-
     except Exception as e:
         db_status = f"error: {str(e)}"
 
+    # Redis check
+    try:
+        redis = await get_redis()
+        await redis.ping()
+    except Exception as e:
+        cache_status = f"error: {str(e)}"
+
+    overall_status = (
+        "ok"
+        if db_status == "ok" and cache_status == "ok"
+        else "degraded"
+    )
+
     return {
-        "status": "ok" if db_status == "ok" else "degraded",
+        "status": overall_status,
         "app": settings.APP_NAME,
         "version": settings.APP_VERSION,
         "db": db_status,
-        "cache": "not configured (Phase 5)",
+        "cache": cache_status,
     }
 
 
 @app.get("/", tags=["Root"])
 async def root():
-    """
-    Root endpoint.
-    """
-
     return {
         "message": f"Welcome to {settings.APP_NAME}",
         "docs": "/docs",
         "health": "/health",
     }
+
+
+# Include router LAST
+app.include_router(urls_router.router)

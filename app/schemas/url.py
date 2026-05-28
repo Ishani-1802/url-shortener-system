@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel, HttpUrl, Field, field_validator
 
 
@@ -80,5 +80,54 @@ class URLAnalyticsResponse(BaseModel):
     expires_at: Optional[datetime] = None
     is_active: bool
     is_custom_alias: bool
+
+    model_config = {"from_attributes": True}
+
+
+class ClickDetail(BaseModel):
+    """A single click event — one row from the clicks table."""
+    id: int
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+    referer: Optional[str] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class DailyClickStat(BaseModel):
+    """Aggregated click count for one calendar day."""
+    date: str          # "2024-01-15"
+    click_count: int
+
+
+class AnalyticsResponse(BaseModel):
+    """
+    Full analytics payload returned by GET /analytics/{short_code}.
+
+    Design decision: click_count is the source of truth merged from
+    PostgreSQL (committed clicks) + Redis (buffered, not yet flushed).
+    This gives real-time accuracy without sacrificing redirect performance.
+    """
+    short_code: str
+    original_url: str
+    short_url: str
+    is_custom_alias: bool
+    is_active: bool
+
+    # Click metrics
+    click_count: int                        # Total: DB + Redis buffer
+    clicks_last_24h: int                    # Rolling 24-hour window
+    clicks_last_7d: int                     # Rolling 7-day window
+
+    # Time-series breakdown
+    clicks_by_day: List[DailyClickStat]     # Last 30 days, one row per day
+
+    # Recent activity
+    recent_clicks: List[ClickDetail]        # Last 10 individual clicks
+
+    # Metadata
+    created_at: datetime
+    expires_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
