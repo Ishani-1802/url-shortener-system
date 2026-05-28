@@ -15,25 +15,37 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+
     # Startup
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
 
-    print("✓ Database tables verified.")
+        print("✓ Database tables verified.")
 
-    redis = await get_redis()
-    await redis.ping()
+    except Exception as e:
+        print(f"Database startup error: {e}")
 
-    print("✓ Redis connection verified.")
+    try:
+        redis = await get_redis()
+        await redis.ping()
+
+        print("✓ Redis connection verified.")
+
+    except Exception as e:
+        print(f"Redis startup error: {e}")
 
     yield
 
     # Shutdown
-    await close_redis()
-    await engine.dispose()
+    try:
+        await close_redis()
+        await engine.dispose()
 
-    print("✓ Connections closed.")
+        print("✓ Connections closed.")
 
+    except Exception as e:
+        print(f"Shutdown error: {e}")
 
 app = FastAPI(
     title=settings.APP_NAME,
