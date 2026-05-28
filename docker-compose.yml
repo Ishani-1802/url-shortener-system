@@ -1,0 +1,100 @@
+name: url-shortener
+
+services:
+
+  # ── PostgreSQL ────────────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: url_shortener_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: urluser
+      POSTGRES_PASSWORD: urlpassword
+      POSTGRES_DB: urlshortener
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U urluser -d urlshortener"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - url_shortener_network
+
+  # ── Redis ─────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: url_shortener_redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --save 60 1
+      --loglevel warning
+    volumes:
+      - redisdata:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - url_shortener_network
+
+  # ── FastAPI Application ───────────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: final
+    container_name: url_shortener_app
+    restart: unless-stopped
+    environment:
+      APP_NAME: "URL Shortener"
+      APP_VERSION: "1.0.0"
+      DEBUG: "False"
+      BASE_URL: "http://localhost:8000"
+      DATABASE_URL: "postgresql+asyncpg://urluser:urlpassword@db:5432/urlshortener"
+      REDIS_URL: "redis://redis:6379"
+      RATE_LIMIT_REQUESTS: "60"
+      RATE_LIMIT_WINDOW: "60"
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - url_shortener_network
+
+volumes:
+  pgdata:
+    driver: local
+
+  redisdata:
+    driver: local
+
+networks:
+  url_shortener_network:
+    driver: bridge
